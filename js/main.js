@@ -25,6 +25,9 @@
     current = name;
   }
 
+  // Exposed so game/multiplayer end screens can return to the menu.
+  SB.goMenu = () => show("menu");
+
   // ---------- API key gate ----------
   const keyInput = document.getElementById("apikey-input");
   const skip = document.getElementById("apikey-skip");

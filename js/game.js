@@ -174,9 +174,23 @@ SB.Single = {
     this.overlay.innerHTML = won
       ? `🏆 You Win!<div class="sub">You out-boxed the AI. HP left: ${Math.round(this.hpYou)}.</div>`
       : `💥 Knocked Down<div class="sub">The AI took this one. Reset your guard and run it back.</div>`;
+    this._addEndButtons();
     this.overlay.classList.add("show");
     SB.Coach.say(won ? "win" : "lose", won ? "player won the round" : "player lost the round",
-      (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.appendChild(s); });
+      (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.insertBefore(s, this.overlay.querySelector(".end-actions")); });
+  },
+
+  _addEndButtons() {
+    const row = document.createElement("div");
+    row.className = "end-actions";
+    const rematch = document.createElement("button");
+    rematch.className = "btn btn-primary"; rematch.textContent = "🔁 Rematch";
+    rematch.onclick = () => { this.stop(); this.start(); };
+    const menu = document.createElement("button");
+    menu.className = "btn btn-ghost"; menu.textContent = "← Back to Menu";
+    menu.onclick = () => SB.goMenu();
+    row.appendChild(rematch); row.appendChild(menu);
+    this.overlay.appendChild(row);
   },
 
   _renderHP() {

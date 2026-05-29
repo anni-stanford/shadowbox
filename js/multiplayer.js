@@ -165,16 +165,28 @@ SB.MP = {
     this._send({ t: "end", youWin: !won });
     this.overlay.innerHTML = won
       ? `🏆 You Win!<div class="sub">You out-boxed your opponent. HP left: ${Math.round(this.hpYou)}.</div>`
-      : `💥 Defeated<div class="sub">Your opponent took this round. Rematch?</div>`;
+      : `💥 Defeated<div class="sub">Your opponent took this round.</div>`;
+    this._menuButton();
     this.overlay.classList.add("show");
     SB.Coach.say(won ? "win" : "lose", won ? "won the multiplayer match" : "lost the multiplayer match",
-      (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.appendChild(s); });
+      (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.insertBefore(s, this.overlay.querySelector(".end-actions")); });
+  },
+
+  _menuButton() {
+    const row = document.createElement("div");
+    row.className = "end-actions";
+    const menu = document.createElement("button");
+    menu.className = "btn btn-primary"; menu.textContent = "← Back to Menu";
+    menu.onclick = () => SB.goMenu();
+    row.appendChild(menu);
+    this.overlay.appendChild(row);
   },
 
   _foeLeft() {
     if (!this.active) return;
     this.active = false; clearInterval(this.tickId);
     this.overlay.innerHTML = `👋 Opponent left<div class="sub">They disconnected. Head back and start a new match.</div>`;
+    this._menuButton();
     this.overlay.classList.add("show");
   },
 
