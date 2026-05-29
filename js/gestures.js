@@ -68,10 +68,13 @@ SB.Gestures = class {
       const w = kp[side + "_wrist"];
       const sh = kp[side + "_shoulder"];
       const el = kp[side + "_elbow"];
-      if (!w || w.score < 0.25 || !sh) continue;
+      if (!w || w.score < 0.22 || !sh) continue;
+
+      const forearm = el && el.score > 0.2 ? Math.hypot(w.x - el.x, w.y - el.y) / SW : 0;
+      const reach = Math.hypot(w.x - sh.x, w.y - sh.y) / SW;
 
       const h = this.hist[side];
-      h.push({ x: w.x, y: w.y, t });
+      h.push({ x: w.x, y: w.y, forearm, reach, t });
       if (h.length > this.HIST) h.shift();
       if (h.length < this.HIST) continue;
 
@@ -81,20 +84,23 @@ SB.Gestures = class {
       const vy = (last.y - first.y) / dt;
       const speed = Math.hypot(vx, vy);
 
-      // arm extension (forearm straightening) — works even toward camera
-      const forearm = el ? Math.hypot(w.x - el.x, w.y - el.y) / SW : 0;
-      const reach = Math.hypot(w.x - sh.x, w.y - sh.y) / SW;
-      const atHeadHeight = w.y < midY + SW * 0.25;          // hand is up at guard/head level
-      const movingUpOrOut = vy < 0 || reach > 0.9;          // thrust up (toward cam) or out
+      // Three independent punch signals, so ANY common punch fires:
+      //  1) lateral/upward 2D travel  (side punches, hooks)
+      //  2) forearm foreshortening    (jab/cross straight AT the camera)
+      //  3) reach change              (arm shooting out from the guard)
+      let maxF = first.forearm, minF = first.forearm, maxR = first.reach, minR = first.reach;
+      for (const p of h) { maxF = Math.max(maxF, p.forearm); minF = Math.min(minF, p.forearm); maxR = Math.max(maxR, p.reach); minR = Math.min(minR, p.reach); }
+      const forearmSwing = maxF - minF;   // foreshortening OR extension
+      const reachSwing = maxR - minR;
 
-      // A punch = a sharp, fast hand movement while up at head height.
-      if (speed > 0.45 && atHeadHeight && movingUpOrOut) {
-        const horizontal = Math.abs(vx) > Math.abs(vy) * 1.2 && Math.abs(last.x - midX) > SW * 0.35;
-        if (horizontal && forearm > 0.35) {
+      const atHeadHeight = w.y < midY + SW * 0.5;   // hand is up around guard/head level
+      const punch = (speed > 0.35) || (forearmSwing > 0.18) || (reachSwing > 0.2);
+
+      if (punch && atHeadHeight) {
+        const horizontal = Math.abs(vx) > Math.abs(vy) * 1.2 && Math.abs(last.x - midX) > SW * 0.4;
+        if (horizontal && speed > 0.4) {
           this._emit("hook", t, { side });
         } else {
-          // lead hand = the side whose wrist sits closer to the body centre
-          // (guard position). Default mapping is stable per player.
           const lead = this._leadSide(kp, SW, midX);
           this._emit(side === lead ? "jab" : "cross", t, { side });
         }
