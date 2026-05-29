@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=9" />
+  <link rel="stylesheet" href="css/styles.css?v=10" />
 
   <!-- TensorFlow.js + MoveNet pose detection (CDN, no build step needed) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
@@ -137,7 +137,7 @@
       <button class="btn btn-ghost btn-back" data-back style="align-self:flex-start">← Menu</button>
       <div class="logo"><span class="logo-glove">🌐</span><h1 class="brand">Multiplayer</h1></div>
       <p class="tagline">Two laptops, two cameras, real punches.</p>
-      <div class="mode-grid mode-grid-2">
+      <div class="mode-grid mode-grid-2" id="mp-choices">
         <button class="glass mode-card" id="mp-create">
           <span class="mode-emoji">➕</span>
           <h3>Create Match</h3>
@@ -150,6 +150,13 @@
           <input id="mp-join-code" class="input" placeholder="room code" />
           <button id="mp-join" class="btn btn-primary btn-block">Join</button>
         </div>
+      </div>
+
+      <div class="glass card share-card" id="mp-joining" hidden>
+        <h3>Joining match… 🥊</h3>
+        <p class="muted small" id="mp-join-status">Connecting to host…</p>
+        <p class="muted small">If it keeps retrying, make sure your friend has the ShadowBox tab open and in the foreground.</p>
+        <button id="mp-join-retry" class="btn btn-primary btn-block">Retry now</button>
       </div>
 
       <div class="glass card share-card" id="mp-share" hidden>
@@ -187,13 +194,13 @@
   </section>
 
   <!-- App modules (?v bumped on each deploy so browsers always load the latest) -->
-  <script src="js/config.js?v=9"></script>
-  <script src="js/pose.js?v=9"></script>
-  <script src="js/gestures.js?v=9"></script>
-  <script src="js/coach.js?v=9"></script>
-  <script src="js/training.js?v=9"></script>
-  <script src="js/game.js?v=9"></script>
-  <script src="js/multiplayer.js?v=9"></script>
-  <script src="js/main.js?v=9"></script>
+  <script src="js/config.js?v=10"></script>
+  <script src="js/pose.js?v=10"></script>
+  <script src="js/gestures.js?v=10"></script>
+  <script src="js/coach.js?v=10"></script>
+  <script src="js/training.js?v=10"></script>
+  <script src="js/game.js?v=10"></script>
+  <script src="js/multiplayer.js?v=10"></script>
+  <script src="js/main.js?v=10"></script>
 </body>
 </html>

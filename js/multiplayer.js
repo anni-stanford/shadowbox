@@ -26,12 +26,17 @@ SB.MP = {
     this.gameWrap = document.getElementById("mp-game");
     this.shareCard = document.getElementById("mp-share");
     this.statusEl = document.getElementById("mp-status");
+    this.choices = document.getElementById("mp-choices");
+    this.joiningCard = document.getElementById("mp-joining");
+    this.joinStatusEl = document.getElementById("mp-join-status");
+    this._joinAttempts = 0;
 
     document.getElementById("mp-create").onclick = () => this.createMatch();
     document.getElementById("mp-join").onclick = () => {
       const code = document.getElementById("mp-join-code").value.trim();
       if (code) this.joinMatch(code);
     };
+    document.getElementById("mp-join-retry").onclick = () => { this._joinAttempts = 0; this._tryConnect(); };
     document.getElementById("mp-copy").onclick = () => {
       const inp = document.getElementById("mp-link");
       inp.select(); navigator.clipboard?.writeText(inp.value);
@@ -39,9 +44,23 @@ SB.MP = {
       setTimeout(() => (document.getElementById("mp-copy").textContent = "Copy"), 1500);
     };
 
+    // When the tab comes back to the foreground (e.g. after the host opened
+    // WhatsApp to share the link), mobile browsers may have killed the peer's
+    // socket — reconnect it so the room is available again.
+    if (!this._visBound) {
+      this._visBound = true;
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && this.peer && this.peer.disconnected && !this.peer.destroyed) {
+          try { this.peer.reconnect(); } catch (e) {}
+        }
+      });
+    }
+
     this.lobby.hidden = false;
     this.gameWrap.hidden = true;
     this.shareCard.hidden = true;
+    this.joiningCard.hidden = true;
+    this.choices.hidden = false;
   },
 
   createMatch() {
@@ -54,27 +73,71 @@ SB.MP = {
       document.getElementById("mp-link").value = link;
       const msg = encodeURIComponent("Fight me on ShadowBox 🥊 Tap to box me live: " + link);
       document.getElementById("mp-whatsapp").href = "https://wa.me/?text=" + msg;
+      this.choices.hidden = true;
       this.shareCard.hidden = false;
-      this.statusEl.textContent = "Waiting for opponent to join…";
+      this.statusEl.textContent = "Waiting for opponent to join… keep this tab open.";
     });
 
     this.peer.on("connection", (c) => { this.conn = c; this._wireConn(); });
-    this.peer.on("error", (e) => (this.statusEl.textContent = "Connection error: " + e.type));
+    // Keep the room alive across mobile backgrounding / network blips.
+    this.peer.on("disconnected", () => { try { this.peer.reconnect(); } catch (e) {} });
+    this.peer.on("error", (e) => {
+      if (e.type === "network" || e.type === "disconnected") { try { this.peer.reconnect(); } catch (_) {} }
+      else if (this.statusEl) this.statusEl.textContent = "Connection issue (" + e.type + ") — keep the tab open.";
+    });
   },
 
   joinMatch(code) {
     this.isHost = false;
     this.roomCode = code.replace(/.*room=/, "").trim();
+    this._joinAttempts = 0;
+
+    if (this.choices) this.choices.hidden = true;
+    if (this.joiningCard) this.joiningCard.hidden = false;
+    this._setJoinStatus("Connecting to host…");
+
     this.peer = new Peer();
-    this.peer.on("open", () => {
+    this.peer.on("open", () => this._tryConnect());
+    this.peer.on("disconnected", () => { try { this.peer.reconnect(); } catch (e) {} });
+    this.peer.on("error", (e) => {
+      if (e.type === "peer-unavailable") this._scheduleRetry();   // host not ready yet
+      else if (e.type === "network" || e.type === "disconnected") { try { this.peer.reconnect(); } catch (_) {} this._scheduleRetry(); }
+      else this._setJoinStatus("Error: " + e.type + " — tap Retry.");
+    });
+  },
+
+  _tryConnect() {
+    if (!this.peer || this.peer.destroyed) return;
+    this._setJoinStatus(this._joinAttempts ? `Host not ready yet… retrying (${this._joinAttempts})` : "Connecting to host…");
+    try {
       this.conn = this.peer.connect(this.roomCode, { reliable: true });
       this._wireConn();
-    });
-    this.peer.on("error", (e) => alert("Could not join match: " + e.type));
+    } catch (e) { this._scheduleRetry(); return; }
+    // If the connection doesn't open shortly, the host probably isn't there yet.
+    clearTimeout(this._joinTimer);
+    this._joinTimer = setTimeout(() => {
+      if (!this.conn || !this.conn.open) this._scheduleRetry();
+    }, 4500);
   },
+
+  _scheduleRetry() {
+    clearTimeout(this._joinTimer);
+    this._joinAttempts++;
+    if (this._joinAttempts > 30) {
+      this._setJoinStatus("Couldn't reach the host. Make sure they have ShadowBox open in the foreground, then tap Retry.");
+      return;
+    }
+    this._setJoinStatus(`Host not ready yet… retrying (${this._joinAttempts})`);
+    clearTimeout(this._joinRetryTimer);
+    this._joinRetryTimer = setTimeout(() => this._tryConnect(), 2000);
+  },
+
+  _setJoinStatus(t) { if (this.joinStatusEl) this.joinStatusEl.textContent = t; },
 
   _wireConn() {
     this.conn.on("open", () => {
+      clearTimeout(this._joinTimer);
+      clearTimeout(this._joinRetryTimer);
       // The inviter (host) shares their OpenAI key so the coach works for BOTH
       // players — the guest never has to enter one. Sent only over this
       // encrypted peer channel and held in memory on the guest's side.
@@ -286,6 +349,8 @@ SB.MP = {
   stop() {
     this.active = false;
     clearInterval(this.tickId);
+    clearTimeout(this._joinTimer);
+    clearTimeout(this._joinRetryTimer);
     if (this.pose) this.pose.stop();
     this.pose = null;
     try { if (this.conn) this.conn.close(); } catch (e) {}
