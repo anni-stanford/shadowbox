@@ -1,15 +1,21 @@
 /*
  * gestures.js — turns a stream of pose keypoints into boxing moves.
  *
- * Design philosophy (the honest part): a single webcam can't measure depth,
- * so we don't try to grade millimetre-perfect technique. For a *game* we only
- * need a reliable category + timing: jab, cross, hook, slip, block. We use
- * velocity + relative-position heuristics with per-move cooldowns, which is
- * robust on an ordinary laptop camera and hides latency behind timing windows.
+ * Tuned for a FRONT-FACING player (you square up to the camera). The hard part
+ * of single-webcam boxing is that a straight punch travels toward the camera
+ * (in depth), so the wrist barely moves in 2D x. The reliable 2D signal we DO
+ * see head-on is: the gloved hand thrusts UP from the guard to ~head height
+ * with a sharp velocity spike, the forearm straightens (wrist gets farther
+ * from the elbow), then it snaps back. We detect on that thrust.
  *
- * Coordinates are in video pixels. Because the view is mirrored, the player's
- * physical right hand appears on the left of the frame; we classify by lead vs
- * rear hand rather than literal left/right so it works for any stance.
+ *   jab/cross : fast straight thrust of one hand up to head height
+ *               (lead hand = jab, rear hand = cross)
+ *   hook      : hand swings across at head height (dominant horizontal motion)
+ *   slip      : head shifts left/right off the shoulder midline
+ *   block     : both hands raised near the face (guard up)
+ *
+ * Depth-free heuristics on smoothed velocity + arm extension, with per-move
+ * cooldowns. Coordinates are video pixels (mirrored view).
  *
  * Emits SB.Gestures.onMove(moveName, meta) at most once per cooldown window.
  */
@@ -18,76 +24,90 @@ window.SB = window.SB || {};
 SB.Gestures = class {
   constructor() {
     this.onMove = null;
-    this.prev = null;          // previous frame keypoints
-    this.prevT = 0;
-    this.lastMoveAt = {};      // per-move cooldown timestamps
-    this.cooldownMs = 450;
+    this.cooldownMs = 380;
+    this.lastMoveAt = {};
     this.guardUpSince = 0;
-    this.shoulderWidth = 120;  // running estimate for normalization
+    this.shoulderWidth = 120;
+    // short history per hand for smoothed velocity + extension delta
+    this.hist = { left: [], right: [] };
+    this.HIST = 4;
   }
 
   feed(kp) {
     const t = performance.now();
     const need = ["left_wrist", "right_wrist", "left_shoulder", "right_shoulder", "nose"];
-    for (const n of need) if (!kp[n] || kp[n].score < 0.25) { this.prev = kp; this.prevT = t; return; }
+    for (const n of need) if (!kp[n] || kp[n].score < 0.2) return;
 
-    const ls = kp.left_shoulder, rs = kp.right_shoulder;
+    const ls = kp.left_shoulder, rs = kp.right_shoulder, nose = kp.nose;
     const sw = Math.hypot(ls.x - rs.x, ls.y - rs.y) || this.shoulderWidth;
-    this.shoulderWidth = this.shoulderWidth * 0.9 + sw * 0.1;
+    this.shoulderWidth = this.shoulderWidth * 0.85 + sw * 0.15;
     const SW = this.shoulderWidth;
-    const shoulderMidX = (ls.x + rs.x) / 2;
-    const shoulderMidY = (ls.y + rs.y) / 2;
+    const midX = (ls.x + rs.x) / 2;
+    const midY = (ls.y + rs.y) / 2;
 
     // ---- BLOCK: both wrists raised near the face (guard up) ----
-    const lw = kp.left_wrist, rw = kp.right_wrist, nose = kp.nose;
-    const lwUp = lw.y < nose.y + SW * 0.4;
-    const rwUp = rw.y < nose.y + SW * 0.4;
-    const wristsNarrow = Math.abs(lw.x - rw.x) < SW * 1.3;
-    if (lwUp && rwUp && wristsNarrow) {
+    const lw = kp.left_wrist, rw = kp.right_wrist;
+    const lwUp = lw.y < midY + SW * 0.35;
+    const rwUp = rw.y < midY + SW * 0.35;
+    const narrow = Math.abs(lw.x - rw.x) < SW * 1.4;
+    if (lwUp && rwUp && narrow) {
       if (!this.guardUpSince) this.guardUpSince = t;
-      if (t - this.guardUpSince > 180) this._emit("block", t, { hold: true });
+      if (t - this.guardUpSince > 160) this._emit("block", t, { hold: true });
     } else {
       this.guardUpSince = 0;
     }
 
-    // ---- SLIP: head shifts laterally well off the shoulder midline ----
-    const headOffset = (nose.x - shoulderMidX) / SW;
-    if (Math.abs(headOffset) > 0.55) {
+    // ---- SLIP: head shifts laterally off the shoulder midline ----
+    const headOffset = (nose.x - midX) / SW;
+    if (Math.abs(headOffset) > 0.45) {
       this._emit("slip", t, { dir: headOffset > 0 ? "right" : "left" });
     }
 
-    // velocity needs a previous frame
-    if (this.prev && this.prevT) {
-      const dt = Math.max(1, t - this.prevT);
-      for (const side of ["left", "right"]) {
-        const w = kp[side + "_wrist"];
-        const pw = this.prev[side + "_wrist"];
-        const sh = kp[side + "_shoulder"];
-        if (!w || !pw || !sh || w.score < 0.3) continue;
+    // ---- PUNCHES: analyse each hand's recent trajectory ----
+    for (const side of ["left", "right"]) {
+      const w = kp[side + "_wrist"];
+      const sh = kp[side + "_shoulder"];
+      const el = kp[side + "_elbow"];
+      if (!w || w.score < 0.25 || !sh) continue;
 
-        const vx = (w.x - pw.x) / dt; // px per ms
-        const vy = (w.y - pw.y) / dt;
-        const speed = Math.hypot(vx, vy);
-        const reach = Math.hypot(w.x - sh.x, w.y - sh.y) / SW; // arm extension in shoulder-widths
-        const atHeadHeight = w.y < shoulderMidY + SW * 0.2;
+      const h = this.hist[side];
+      h.push({ x: w.x, y: w.y, t });
+      if (h.length > this.HIST) h.shift();
+      if (h.length < this.HIST) continue;
 
-        // Fast extension forward/up = straight punch (jab/cross).
-        if (speed > 0.9 && reach > 1.0 && atHeadHeight) {
-          // lead hand (closer to camera centre horizontally) => jab, rear => cross
-          const isLead = Math.abs(w.x - shoulderMidX) < Math.abs((this.prev[side + "_wrist"].x) - shoulderMidX) + SW;
-          // hook = large horizontal velocity with arm bent across at head height
-          const horizontal = Math.abs(vx) > Math.abs(vy) * 1.3;
-          if (horizontal && reach > 0.8 && reach < 1.7) {
-            this._emit("hook", t, { side });
-          } else {
-            this._emit(isLead ? "jab" : "cross", t, { side });
-          }
+      const first = h[0], last = h[h.length - 1];
+      const dt = Math.max(16, last.t - first.t);
+      const vx = (last.x - first.x) / dt;       // px/ms over the window
+      const vy = (last.y - first.y) / dt;
+      const speed = Math.hypot(vx, vy);
+
+      // arm extension (forearm straightening) — works even toward camera
+      const forearm = el ? Math.hypot(w.x - el.x, w.y - el.y) / SW : 0;
+      const reach = Math.hypot(w.x - sh.x, w.y - sh.y) / SW;
+      const atHeadHeight = w.y < midY + SW * 0.25;          // hand is up at guard/head level
+      const movingUpOrOut = vy < 0 || reach > 0.9;          // thrust up (toward cam) or out
+
+      // A punch = a sharp, fast hand movement while up at head height.
+      if (speed > 0.45 && atHeadHeight && movingUpOrOut) {
+        const horizontal = Math.abs(vx) > Math.abs(vy) * 1.2 && Math.abs(last.x - midX) > SW * 0.35;
+        if (horizontal && forearm > 0.35) {
+          this._emit("hook", t, { side });
+        } else {
+          // lead hand = the side whose wrist sits closer to the body centre
+          // (guard position). Default mapping is stable per player.
+          const lead = this._leadSide(kp, SW, midX);
+          this._emit(side === lead ? "jab" : "cross", t, { side });
         }
+        h.length = 0; // reset so we don't double-count the same thrust
       }
     }
+  }
 
-    this.prev = kp;
-    this.prevT = t;
+  _leadSide(kp, SW, midX) {
+    // Whichever hand is held nearer the centre line is treated as the lead.
+    const lw = kp.left_wrist, rw = kp.right_wrist;
+    const ld = Math.abs(lw.x - midX), rd = Math.abs(rw.x - midX);
+    return ld <= rd ? "left" : "right";
   }
 
   _emit(move, t, meta) {
@@ -97,6 +117,7 @@ SB.Gestures = class {
   }
 
   reset() {
-    this.prev = null; this.prevT = 0; this.lastMoveAt = {}; this.guardUpSince = 0;
+    this.lastMoveAt = {}; this.guardUpSince = 0;
+    this.hist = { left: [], right: [] };
   }
 };

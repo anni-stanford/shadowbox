@@ -82,7 +82,11 @@ SB.Training = {
   _onMove(move) {
     if (!this.active || !this.awaiting) return;
     this.attempts++;
-    if (move === this.awaiting) {
+    // Front-on, a jab and a cross look almost identical to a single camera,
+    // so accept either straight punch when a straight punch is requested.
+    const straight = (m) => m === "jab" || m === "cross";
+    const correct = move === this.awaiting || (straight(move) && straight(this.awaiting));
+    if (correct) {
       this.hits++; this.reps++;
       const c = document.getElementById("tcc-" + move);
       if (c) c.textContent = (parseInt(c.textContent) || 0) + 1;
