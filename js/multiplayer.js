@@ -17,6 +17,18 @@ window.SB = window.SB || {};
 SB.MP = {
   peer: null, conn: null, isHost: false, roomCode: "",
   pose: null, gestures: null, active: false,
+
+  // STUN helps the two browsers find a path to each other across NATs.
+  PEER_OPTS: {
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" },
+      ],
+    },
+  },
+
   hpYou: 100, hpFoe: 100, timeLeft: 90,
   defendedUntil: 0, tickId: null,
 
@@ -65,16 +77,21 @@ SB.MP = {
 
   createMatch() {
     this.isHost = true;
-    this.roomCode = "shadowbox-" + Math.random().toString(36).slice(2, 8);
-    this.peer = new Peer(this.roomCode);
+    // Let the signaling server assign the id — far more reliable on the free
+    // PeerJS cloud than registering our own custom id. The assigned id becomes
+    // the room code in the share link.
+    this.peer = new Peer(this.PEER_OPTS);
 
-    this.peer.on("open", () => {
-      const link = location.origin + location.pathname + "?room=" + this.roomCode;
+    this.choices.hidden = true;
+    this.shareCard.hidden = false;
+    this.statusEl.textContent = "Creating match…";
+
+    this.peer.on("open", (id) => {
+      this.roomCode = id;
+      const link = location.origin + location.pathname + "?room=" + encodeURIComponent(id);
       document.getElementById("mp-link").value = link;
       const msg = encodeURIComponent("Fight me on ShadowBox 🥊 Tap to box me live: " + link);
       document.getElementById("mp-whatsapp").href = "https://wa.me/?text=" + msg;
-      this.choices.hidden = true;
-      this.shareCard.hidden = false;
       this.statusEl.textContent = "Waiting for opponent to join… keep this tab open.";
     });
 
@@ -96,7 +113,7 @@ SB.MP = {
     if (this.joiningCard) this.joiningCard.hidden = false;
     this._setJoinStatus("Connecting to host…");
 
-    this.peer = new Peer();
+    this.peer = new Peer(this.PEER_OPTS);
     this.peer.on("open", () => this._tryConnect());
     this.peer.on("disconnected", () => { try { this.peer.reconnect(); } catch (e) {} });
     this.peer.on("error", (e) => {
