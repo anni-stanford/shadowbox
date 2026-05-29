@@ -56,8 +56,8 @@ No build step. You just need a static server (the browser requires HTTPS or `loc
 ```bash
 git clone https://github.com/anni-stanford/shadowbox.git
 cd shadowbox
-npm start          # serves on http://localhost:7788  (uses npx serve)
-# or any static server, e.g.:  python3 -m http.server 7788
+npm start          # serves on http://localhost:7788  (uses python3 -m http.server)
+# or any static server, e.g.:  npx serve --listen 7788
 ```
 
 Open `http://localhost:7788`, allow camera access, (optionally) paste an OpenAI key, and pick a mode.
