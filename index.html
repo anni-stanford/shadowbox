@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0" />
   <title>ShadowBox — Your Body Is The Controller</title>
   <meta name="description" content="ShadowBox turns your webcam into a boxing ring. No controller, no gym, no gear. Train, fight an AI, or box a friend across the screen." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/styles.css?v=8" />
+  <link rel="stylesheet" href="css/styles.css?v=9" />
 
   <!-- TensorFlow.js + MoveNet pose detection (CDN, no build step needed) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core@4.20.0/dist/tf-core.min.js"></script>
@@ -82,7 +82,7 @@
   <section id="screen-training" class="screen">
     <div class="game-layout">
       <div class="stage">
-        <video id="training-video" playsinline muted></video>
+        <video id="training-video" playsinline muted autoplay webkit-playsinline></video>
         <canvas id="training-canvas"></canvas>
         <div class="hud hud-top">
           <button class="btn btn-ghost btn-back" data-back>← Menu</button>
@@ -109,7 +109,7 @@
   <section id="screen-single" class="screen">
     <div class="game-layout">
       <div class="stage">
-        <video id="single-video" playsinline muted></video>
+        <video id="single-video" playsinline muted autoplay webkit-playsinline></video>
         <canvas id="single-canvas"></canvas>
         <div class="hud hud-top">
           <button class="btn btn-ghost btn-back" data-back>← Menu</button>
@@ -166,7 +166,7 @@
 
     <div class="game-layout" id="mp-game" hidden>
       <div class="stage">
-        <video id="mp-video" playsinline muted></video>
+        <video id="mp-video" playsinline muted autoplay webkit-playsinline></video>
         <canvas id="mp-canvas"></canvas>
         <div class="hud hud-top">
           <button class="btn btn-ghost btn-back" data-back>← Leave</button>
@@ -187,13 +187,13 @@
   </section>
 
   <!-- App modules (?v bumped on each deploy so browsers always load the latest) -->
-  <script src="js/config.js?v=8"></script>
-  <script src="js/pose.js?v=8"></script>
-  <script src="js/gestures.js?v=8"></script>
-  <script src="js/coach.js?v=8"></script>
-  <script src="js/training.js?v=8"></script>
-  <script src="js/game.js?v=8"></script>
-  <script src="js/multiplayer.js?v=8"></script>
-  <script src="js/main.js?v=8"></script>
+  <script src="js/config.js?v=9"></script>
+  <script src="js/pose.js?v=9"></script>
+  <script src="js/gestures.js?v=9"></script>
+  <script src="js/coach.js?v=9"></script>
+  <script src="js/training.js?v=9"></script>
+  <script src="js/game.js?v=9"></script>
+  <script src="js/multiplayer.js?v=9"></script>
+  <script src="js/main.js?v=9"></script>
 </body>
 </html>

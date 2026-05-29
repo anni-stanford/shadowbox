@@ -27,17 +27,43 @@ SB.Pose = class {
   async start(onFrame) {
     this.onFrame = onFrame;
 
-    // 1. Camera
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, facingMode: "user" },
-      audio: false,
-    });
-    this.video.srcObject = this.stream;
-    await this.video.play();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("camera-unsupported");
+    }
 
-    // 2. MoveNet (Lightning = fastest, best for real-time on a laptop)
-    await tf.setBackend("webgl");
-    await tf.ready();
+    // iOS Safari needs these set on the element for inline autoplay to work.
+    this.video.setAttribute("playsinline", "");
+    this.video.setAttribute("webkit-playsinline", "");
+    this.video.setAttribute("autoplay", "");
+    this.video.muted = true;
+    this.video.playsInline = true;
+
+    // 1. Camera — try ideal constraints, then fall back to bare video:true (phones).
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+        audio: false,
+      });
+    } catch (e) {
+      this.stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    this.video.srcObject = this.stream;
+
+    // Wait for dimensions, then play (catch autoplay-gesture rejections on iOS).
+    await new Promise((res) => {
+      if (this.video.readyState >= 2) return res();
+      this.video.onloadedmetadata = () => res();
+      setTimeout(res, 1500);
+    });
+    try { await this.video.play(); } catch (e) { /* autoplay attr will handle it */ }
+
+    // 2. Pose backend — WebGL first, fall back to CPU if a device lacks it.
+    try {
+      await tf.setBackend("webgl");
+      await tf.ready();
+    } catch (e) {
+      try { await tf.setBackend("cpu"); await tf.ready(); } catch (e2) {}
+    }
     this.detector = await poseDetection.createDetector(
       poseDetection.SupportedModels.MoveNet,
       { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
