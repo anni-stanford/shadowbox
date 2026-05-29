@@ -81,14 +81,14 @@ SB.MP = {
       if (this.isHost && SB.config.hasKey()) {
         this._send({ t: "key", key: SB.config.getKey() });
       }
-      this._startFight();
+      this._enterMatch();
     });
     this.conn.on("data", (d) => this._onData(d));
     this.conn.on("close", () => this._foeLeft());
   },
 
-  // ---------- fight ----------
-  async _startFight() {
+  // ---------- enter match: start camera, then wait for BOTH players to ready up ----------
+  async _enterMatch() {
     this.lobby.hidden = true;
     this.gameWrap.hidden = false;
 
@@ -101,22 +101,79 @@ SB.MP = {
     this.stage = this.video.parentElement;
 
     this.hpYou = 100; this.hpFoe = 100; this.timeLeft = 90; this.defendedUntil = 0;
+    this.iAmReady = false; this.foeReady = false; this.active = false;
     this._renderHP(); this._renderTime();
-    this.overlay.classList.remove("show");
 
     this.pose = new SB.Pose(this.video, this.canvas);
     this.gestures = new SB.Gestures();
     this.gestures.onMove = (m) => this._onLocalMove(m);
 
+    this.coachEl.textContent = "Opponent connected. Ready up!";
     try {
-      await this.pose.start((kp) => this.gestures.feed(kp));
+      await this.pose.start((kp) => this.gestures.feed(kp)); // camera on; moves do nothing until active
     } catch (e) {
       this.coachEl.textContent = "Camera access is required. Allow it and rejoin.";
       return;
     }
 
+    this._showReady();
+  },
+
+  _showReady() {
+    this.overlay.innerHTML = "";
+    const title = document.createElement("div");
+    title.textContent = "Ready?";
+    const sub = document.createElement("div");
+    sub.className = "sub"; sub.textContent = "Square up to your camera. Match starts when you BOTH press ready.";
+    const status = document.createElement("div");
+    status.className = "sub"; status.id = "mp-ready-status";
+    status.textContent = "You: not ready · Opponent: not ready";
+    const row = document.createElement("div");
+    row.className = "end-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary"; btn.id = "mp-ready-btn"; btn.textContent = "✅ I'm Ready";
+    btn.onclick = () => this._setReady();
+    row.appendChild(btn);
+    this.overlay.appendChild(title);
+    this.overlay.appendChild(sub);
+    this.overlay.appendChild(status);
+    this.overlay.appendChild(row);
+    this.overlay.classList.add("show");
+  },
+
+  _setReady() {
+    if (this.iAmReady) return;
+    this.iAmReady = true;
+    this._send({ t: "ready" });
+    const btn = document.getElementById("mp-ready-btn");
+    if (btn) { btn.textContent = "Ready ✓"; btn.disabled = true; btn.style.opacity = ".6"; }
+    this._updateReadyStatus();
+    this._maybeStart();
+  },
+
+  _updateReadyStatus() {
+    const s = document.getElementById("mp-ready-status");
+    if (s) s.textContent = `You: ${this.iAmReady ? "ready ✓" : "not ready"} · Opponent: ${this.foeReady ? "ready ✓" : "not ready"}`;
+  },
+
+  _maybeStart() {
+    if (this.iAmReady && this.foeReady) this._countdown();
+  },
+
+  _countdown() {
+    let n = 3;
+    const tick = () => {
+      this.overlay.innerHTML = `<div style="font-size:96px">${n}</div>`;
+      if (n === 0) { this.overlay.innerHTML = `<div style="font-size:72px">FIGHT!</div>`; setTimeout(() => this._beginRound(), 600); return; }
+      n--; setTimeout(tick, 800);
+    };
+    tick();
+  },
+
+  _beginRound() {
+    this.overlay.classList.remove("show");
+    this.overlay.innerHTML = "";
     this.active = true;
-    this.coachEl.textContent = "Opponent connected. Fight!";
     SB.Coach.say("intro", "live multiplayer match starting", (t) => (this.coachEl.textContent = t));
     this.tickId = setInterval(() => this._tick(), 1000);
   },
@@ -140,6 +197,12 @@ SB.MP = {
         SB.config.setSessionKey(d.key);
         if (this.coachEl) this.coachEl.textContent = "Coach connected via your opponent's key 🥊";
       }
+      return;
+    }
+    if (d.t === "ready") {
+      this.foeReady = true;
+      this._updateReadyStatus();
+      this._maybeStart();
       return;
     }
     if (!this.active) return;

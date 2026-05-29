@@ -81,13 +81,12 @@
   document.querySelectorAll("[data-back]").forEach((b) => (b.onclick = () => show("menu")));
 
   // ---------- boot ----------
-  // If we already have a key (or a room link), let returning players skip the gate.
   const params = new URLSearchParams(location.search);
   if (params.get("room")) {
-    // still show the key gate briefly so they can add a key, but pre-tick skip
-    skip.checked = true;
-  }
-  if (SB.config.hasKey()) {
+    // Invited guest: skip the API-key screen entirely and go straight into the
+    // match. The inviter's key powers the coach for both players.
+    enterApp();
+  } else if (SB.config.hasKey()) {
     keyInput.value = SB.config.getKey();
   }
 })();
