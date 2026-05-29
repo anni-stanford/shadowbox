@@ -21,6 +21,40 @@ SB.Single = {
   aiGuard: false,
   defended: false,
   loopId: null, tickId: null,
+  _reactBusy: false,
+
+  SPRITE: {
+    idle: "assets/boxer-idle.png",
+    attack: "assets/boxer-attack.png",
+    block: "assets/boxer-block.png",
+    jab: "assets/boxer-hit-jab.png",
+    cross: "assets/boxer-hit-cross.png",
+    hook: "assets/boxer-hit-hook.png",
+    ko: "assets/boxer-ko.png",
+  },
+
+  // Swap the boxer image + play the matching reaction animation.
+  _setSprite(state, reactClass) {
+    if (!this.foeEl) return;
+    const src = this.SPRITE[state] || this.SPRITE.idle;
+    if (!this.foeEl.src.endsWith(src)) this.foeEl.src = src;
+    this.foeEl.classList.remove("attack", "guard", "react-jab", "react-cross", "react-hook");
+    if (reactClass) { void this.foeEl.offsetWidth; this.foeEl.classList.add(reactClass); }
+  },
+
+  // React to a landed punch with the right face + motion, then recover.
+  _react(move) {
+    this._reactBusy = true;
+    if (move === "jab") this._setSprite("jab", "react-jab");
+    else if (move === "cross") this._setSprite("cross", "react-cross");
+    else if (move === "hook") this._setSprite("hook", "react-hook");
+    const back = move === "jab" ? 340 : 600;
+    clearTimeout(this._recoverT);
+    this._recoverT = setTimeout(() => {
+      this._reactBusy = false;
+      if (this.active) this._setSprite(this.aiGuard ? "block" : "idle");
+    }, back);
+  },
 
   async start() {
     this.video = document.getElementById("single-video");
@@ -32,8 +66,10 @@ SB.Single = {
     this.stage = this.video.parentElement;
 
     this.hpYou = 100; this.hpAI = 100; this.timeLeft = 90;
+    this._reactBusy = false;
     this._renderHP(); this._renderTime();
     this.overlay.classList.remove("show");
+    this._setSprite("idle");
 
     this.pose = new SB.Pose(this.video, this.canvas);
     this.gestures = new SB.Gestures();
@@ -59,9 +95,8 @@ SB.Single = {
       const base = move === "jab" ? 5 : move === "cross" ? 9 : 12;
       const dmg = this.aiGuard ? Math.round(base * 0.2) : base;
       this.hpAI = Math.max(0, this.hpAI - dmg);
-      this._float(this.aiGuard ? "block" : "-" + dmg, this.aiGuard ? "#8fa" : "var(--accent2)", 0.7, 0.4);
-      this.foeEl.classList.add("hit");
-      setTimeout(() => this.foeEl.classList.remove("hit"), 300);
+      this._float(this.aiGuard ? "BLOCKED" : "-" + dmg, this.aiGuard ? "#8fa" : "var(--accent2)", 0.5, 0.32);
+      if (!this.aiGuard) this._react(move);   // distinct face reaction per punch
       this._renderHP();
       if (this.hpAI <= 0) this._end(true);
     } else if (move === "slip" || move === "block") {
@@ -84,6 +119,7 @@ SB.Single = {
       const attack = Math.random() < 0.5 ? "JAB" : Math.random() < 0.5 ? "CROSS" : "HOOK";
       this.telEl.textContent = attack + " INCOMING";
       this.telEl.classList.add("show");
+      if (!this._reactBusy) this._setSprite("attack");
       this.foeEl.classList.add("attack");
 
       await this._sleep(1100); // reaction beat for the player
@@ -93,6 +129,7 @@ SB.Single = {
       this.aiState = "striking";
       this.telEl.classList.remove("show");
       this.foeEl.classList.remove("attack");
+      if (!this._reactBusy) this._setSprite("idle");
       if (!this.defended) {
         const dmg = 6 + Math.floor(Math.random() * 8);
         this.hpYou = Math.max(0, this.hpYou - dmg);
@@ -111,9 +148,11 @@ SB.Single = {
 
       // Brief guard window where AI defends your shots.
       if (Math.random() < 0.5) {
-        this.aiGuard = true; this.foeEl.textContent = "🛡️";
+        this.aiGuard = true;
+        if (!this._reactBusy) this._setSprite("block");
         await this._sleep(700);
-        this.aiGuard = false; this.foeEl.textContent = "🤖";
+        this.aiGuard = false;
+        if (!this._reactBusy) this._setSprite("idle");
       }
     }
   },
@@ -129,6 +168,9 @@ SB.Single = {
     if (!this.active) return;
     this.active = false;
     clearInterval(this.tickId);
+    clearTimeout(this._recoverT);
+    this._reactBusy = true;
+    this._setSprite(won ? "ko" : "attack"); // KO if you won; still swinging if you lost
     this.overlay.innerHTML = won
       ? `🏆 You Win!<div class="sub">You out-boxed the AI. HP left: ${Math.round(this.hpYou)}.</div>`
       : `💥 Knocked Down<div class="sub">The AI took this one. Reset your guard and run it back.</div>`;
@@ -155,6 +197,7 @@ SB.Single = {
   stop() {
     this.active = false;
     clearInterval(this.tickId);
+    clearTimeout(this._recoverT);
     if (this.pose) this.pose.stop();
     this.pose = null;
   },
