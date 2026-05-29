@@ -178,6 +178,28 @@ h3 { font-size: 17px; }
 .share-link-row { display: flex; gap: 10px; margin-top: 12px; }
 .share-link-row .input { margin-top: 0; }
 
+/* Live vision indicator + move ticker (so you can SEE detection) */
+.vision-chip {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.6); border: 1px solid var(--glass-border);
+  padding: 7px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+  backdrop-filter: blur(8px); white-space: nowrap;
+}
+.vision-chip.ok { border-color: var(--green); color: var(--green); }
+.vision-chip.warn { border-color: var(--accent2); color: var(--accent2); }
+.move-ticker {
+  position: absolute; top: 50%; left: 50%; z-index: 6;
+  transform: translate(-50%, -50%) scale(.6); opacity: 0;
+  font-size: 52px; font-weight: 700; color: var(--green);
+  text-shadow: 0 4px 20px rgba(0,0,0,.8); pointer-events: none; text-transform: uppercase;
+}
+.move-ticker.pop { animation: pop .6s ease-out; }
+@keyframes pop {
+  0% { opacity: 0; transform: translate(-50%,-50%) scale(.6); }
+  30% { opacity: 1; transform: translate(-50%,-50%) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+}
+
 /* Floating hit feedback */
 .hit-float {
   position: absolute; z-index: 6; font-weight: 700; font-size: 30px; pointer-events: none;

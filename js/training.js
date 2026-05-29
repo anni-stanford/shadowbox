@@ -27,6 +27,8 @@ SB.Training = {
     this.promptEl = document.getElementById("training-prompt");
     this.scoreEl = document.getElementById("training-score");
     this.accEl = document.getElementById("training-acc");
+    this.visionEl = document.getElementById("training-vision");
+    this.tickerEl = document.getElementById("training-ticker");
 
     this.reps = 0; this.attempts = 0; this.hits = 0;
     this._renderScore();
@@ -34,11 +36,11 @@ SB.Training = {
 
     this.pose = new SB.Pose(video, canvas);
     this.gestures = new SB.Gestures();
-    this.gestures.onMove = (m) => this._onMove(m);
+    this.gestures.onMove = (m) => { this._tick2(m); this._onMove(m); };
 
     this.coachEl.textContent = "Starting camera…";
     try {
-      await this.pose.start((kp) => this.gestures.feed(kp));
+      await this.pose.start((kp) => { this._vision(kp); this.gestures.feed(kp); });
     } catch (e) {
       this.coachEl.textContent = "Camera access is required to train. Please allow it and reopen.";
       return;
@@ -120,6 +122,25 @@ SB.Training = {
     this.promptEl.textContent = text;
     this.promptEl.style.borderColor = color;
     setTimeout(() => (this.promptEl.style.borderColor = "var(--accent)"), 500);
+  },
+
+  // Live "what does the camera see" indicator — tells you if your hands are in frame.
+  _vision(kp) {
+    if (!this.visionEl) return;
+    const lw = kp.left_wrist, rw = kp.right_wrist;
+    const lOk = lw && lw.score > 0.3, rOk = rw && rw.score > 0.3;
+    if (lOk && rOk) { this.visionEl.textContent = "✋ both hands tracked"; this.visionEl.className = "vision-chip ok"; }
+    else if (lOk || rOk) { this.visionEl.textContent = "✋ one hand — raise both into frame"; this.visionEl.className = "vision-chip warn"; }
+    else { this.visionEl.textContent = "🙌 step back so your hands are in view"; this.visionEl.className = "vision-chip warn"; }
+  },
+
+  // Always show the detected move (even before a prompt) so you can SEE it working.
+  _tick2(move) {
+    if (!this.tickerEl) return;
+    this.tickerEl.textContent = SB.MOVE_LABEL[move] || move;
+    this.tickerEl.classList.remove("pop");
+    void this.tickerEl.offsetWidth; // restart animation
+    this.tickerEl.classList.add("pop");
   },
 
   _renderScore() {
