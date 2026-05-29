@@ -18,13 +18,17 @@ SB.MP = {
   peer: null, conn: null, isHost: false, roomCode: "",
   pose: null, gestures: null, active: false,
 
-  // STUN helps the two browsers find a path to each other across NATs.
+  // STUN finds a direct path; TURN relays traffic when the network (e.g. mobile
+  // carrier / symmetric NAT) blocks a direct peer-to-peer connection — which is
+  // why phone-to-phone needs TURN, not just STUN. OpenRelay is a free TURN.
   PEER_OPTS: {
     config: {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:global.stun.twilio.com:3478" },
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
       ],
     },
   },
@@ -75,24 +79,22 @@ SB.MP = {
     this.choices.hidden = false;
   },
 
-  createMatch() {
+  async createMatch() {
     this.isHost = true;
-    // Let the signaling server assign the id — far more reliable on the free
-    // PeerJS cloud than registering our own custom id. The assigned id becomes
-    // the room code in the share link.
-    this.peer = new Peer(this.PEER_OPTS);
+    this._link = ""; this._waHref = "#";
 
-    this.choices.hidden = true;
-    this.shareCard.hidden = false;
-    this.statusEl.textContent = "Creating match…";
+    // Show the match stage (camera) right away with the share link as an overlay.
+    await this._enterMatch();
+    this._showHostWaiting();
+
+    // Server-assigned id is far more reliable on the free PeerJS cloud.
+    this.peer = new Peer(this.PEER_OPTS);
 
     this.peer.on("open", (id) => {
       this.roomCode = id;
-      const link = location.origin + location.pathname + "?room=" + encodeURIComponent(id);
-      document.getElementById("mp-link").value = link;
-      const msg = encodeURIComponent("Fight me on ShadowBox 🥊 Tap to box me live: " + link);
-      document.getElementById("mp-whatsapp").href = "https://wa.me/?text=" + msg;
-      this.statusEl.textContent = "Waiting for opponent to join… keep this tab open.";
+      this._link = location.origin + location.pathname + "?room=" + encodeURIComponent(id);
+      this._waHref = "https://wa.me/?text=" + encodeURIComponent("Fight me on ShadowBox 🥊 Tap to box me live: " + this._link);
+      this._fillHostLink();
     });
 
     this.peer.on("connection", (c) => { this.conn = c; this._wireConn(); });
@@ -100,8 +102,35 @@ SB.MP = {
     this.peer.on("disconnected", () => { try { this.peer.reconnect(); } catch (e) {} });
     this.peer.on("error", (e) => {
       if (e.type === "network" || e.type === "disconnected") { try { this.peer.reconnect(); } catch (_) {} }
-      else if (this.statusEl) this.statusEl.textContent = "Connection issue (" + e.type + ") — keep the tab open.";
     });
+  },
+
+  _showHostWaiting() {
+    this.overlay.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "match-share";
+    wrap.innerHTML =
+      `<div style="font-size:30px;font-weight:700">Match ready 🥊</div>
+       <div class="sub">Send this link to your opponent. Keep this tab open — the fight starts the moment they join.</div>
+       <div class="share-link-row"><input id="mp-ov-link" class="input" readonly value="Creating match…"><button id="mp-ov-copy" class="btn btn-primary">Copy</button></div>
+       <a id="mp-ov-wa" class="btn btn-whatsapp btn-block" target="_blank" rel="noopener">Share on WhatsApp</a>
+       <div class="sub" id="mp-ov-status">Waiting for opponent to join…</div>`;
+    this.overlay.appendChild(wrap);
+    this.overlay.classList.add("show");
+    document.getElementById("mp-ov-copy").onclick = () => {
+      const inp = document.getElementById("mp-ov-link");
+      inp.select(); navigator.clipboard?.writeText(inp.value);
+      const b = document.getElementById("mp-ov-copy"); b.textContent = "Copied!";
+      setTimeout(() => (b.textContent = "Copy"), 1500);
+    };
+    this._fillHostLink();
+  },
+
+  _fillHostLink() {
+    const inp = document.getElementById("mp-ov-link");
+    const wa = document.getElementById("mp-ov-wa");
+    if (inp && this._link) inp.value = this._link;
+    if (wa) wa.href = this._waHref || "#";
   },
 
   joinMatch(code) {
@@ -134,7 +163,7 @@ SB.MP = {
     clearTimeout(this._joinTimer);
     this._joinTimer = setTimeout(() => {
       if (!this.conn || !this.conn.open) this._scheduleRetry();
-    }, 4500);
+    }, 9000);
   },
 
   _scheduleRetry() {
@@ -152,7 +181,7 @@ SB.MP = {
   _setJoinStatus(t) { if (this.joinStatusEl) this.joinStatusEl.textContent = t; },
 
   _wireConn() {
-    this.conn.on("open", () => {
+    this.conn.on("open", async () => {
       clearTimeout(this._joinTimer);
       clearTimeout(this._joinRetryTimer);
       // The inviter (host) shares their OpenAI key so the coach works for BOTH
@@ -161,7 +190,10 @@ SB.MP = {
       if (this.isHost && SB.config.hasKey()) {
         this._send({ t: "key", key: SB.config.getKey() });
       }
-      this._enterMatch();
+      // Host already has its camera/stage up (from createMatch); the guest
+      // starts its camera now. Both then go to the Ready handshake.
+      if (!this.isHost) await this._enterMatch();
+      this._showReady();
     });
     this.conn.on("data", (d) => this._onData(d));
     this.conn.on("close", () => this._foeLeft());
@@ -188,15 +220,12 @@ SB.MP = {
     this.gestures = new SB.Gestures();
     this.gestures.onMove = (m) => this._onLocalMove(m);
 
-    this.coachEl.textContent = "Opponent connected. Ready up!";
+    this.coachEl.textContent = "Camera on. Get set…";
     try {
       await this.pose.start((kp) => this.gestures.feed(kp)); // camera on; moves do nothing until active
     } catch (e) {
-      this.coachEl.textContent = "Camera access is required. Allow it and rejoin.";
-      return;
+      this.coachEl.textContent = "Camera access is required. Allow it and reopen.";
     }
-
-    this._showReady();
   },
 
   _showReady() {
