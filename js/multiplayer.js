@@ -67,7 +67,7 @@ SB.MP = {
     this.roomCode = code.replace(/.*room=/, "").trim();
     this.peer = new Peer();
     this.peer.on("open", () => {
-      this.conn = this.peer.connect(this.roomCode, { reliable: false });
+      this.conn = this.peer.connect(this.roomCode, { reliable: true });
       this._wireConn();
     });
     this.peer.on("error", (e) => alert("Could not join match: " + e.type));
