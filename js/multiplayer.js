@@ -74,7 +74,15 @@ SB.MP = {
   },
 
   _wireConn() {
-    this.conn.on("open", () => this._startFight());
+    this.conn.on("open", () => {
+      // The inviter (host) shares their OpenAI key so the coach works for BOTH
+      // players — the guest never has to enter one. Sent only over this
+      // encrypted peer channel and held in memory on the guest's side.
+      if (this.isHost && SB.config.hasKey()) {
+        this._send({ t: "key", key: SB.config.getKey() });
+      }
+      this._startFight();
+    });
     this.conn.on("data", (d) => this._onData(d));
     this.conn.on("close", () => this._foeLeft());
   },
@@ -125,7 +133,16 @@ SB.MP = {
   },
 
   _onData(d) {
-    if (!d || !this.active) return;
+    if (!d) return;
+    // Handshake: accept the host's shared key even before the round is active.
+    if (d.t === "key") {
+      if (!SB.config.hasKey()) {
+        SB.config.setSessionKey(d.key);
+        if (this.coachEl) this.coachEl.textContent = "Coach connected via your opponent's key 🥊";
+      }
+      return;
+    }
+    if (!this.active) return;
     if (d.t === "atk") {
       const base = d.move === "jab" ? 5 : d.move === "cross" ? 9 : 12;
       const defended = performance.now() < this.defendedUntil;
