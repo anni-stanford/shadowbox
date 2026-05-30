@@ -28,6 +28,9 @@
   // Exposed so game/multiplayer end screens can return to the menu.
   SB.goMenu = () => show("menu");
 
+  // Background fight music + its toggle.
+  if (SB.Music) SB.Music.init();
+
   // ---------- API key gate ----------
   const keyInput = document.getElementById("apikey-input");
   const skip = document.getElementById("apikey-skip");
