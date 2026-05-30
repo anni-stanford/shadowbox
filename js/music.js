@@ -2,32 +2,31 @@
  * music.js — background fight music.
  *
  * Plays a looping audio track (assets/theme.mp3, supplied by the project owner)
- * with a small 🔊/🔇 toggle whose state is remembered. Browsers block autoplay
- * with sound until a user gesture, so playback begins on the first tap/click.
+ * with a small 🔊/🔇 toggle. Music is OFF by default and NEVER autoplays — it
+ * only plays once the user explicitly turns it on with the button.
  */
 window.SB = window.SB || {};
 
 SB.Music = {
-  KEY: "shadowbox_music_off",
+  KEY: "shadowbox_music",
   TRACK: "assets/theme.mp3",
   audio: null,
-  _started: false,
 
-  enabled() { return localStorage.getItem(this.KEY) !== "1"; },
+  // OFF unless the user has explicitly enabled it.
+  enabled() { return localStorage.getItem(this.KEY) === "on"; },
 
   init() {
     this.btn = document.getElementById("music-toggle");
     this.audio = new Audio(this.TRACK);
     this.audio.loop = true;
     this.audio.volume = 0.55;
-    this.audio.preload = "auto";
+    this.audio.preload = "none";
 
     if (this.btn) this.btn.addEventListener("click", () => this.toggle());
     this._render();
 
-    // Audio can only start after a user gesture — start on the first interaction.
+    // Only start (if previously enabled) after a user gesture.
     const startOnGesture = () => {
-      this._started = true;
       if (this.enabled()) this.play();
       window.removeEventListener("pointerdown", startOnGesture);
     };
@@ -37,7 +36,7 @@ SB.Music = {
   play() {
     if (!this.audio) return;
     const p = this.audio.play();
-    if (p && p.catch) p.catch(() => {}); // ignore autoplay-policy rejections
+    if (p && p.catch) p.catch(() => {});
     this._render();
   },
 
@@ -49,7 +48,7 @@ SB.Music = {
 
   toggle() {
     const turnOn = !this.enabled();
-    localStorage.setItem(this.KEY, turnOn ? "0" : "1");
+    localStorage.setItem(this.KEY, turnOn ? "on" : "off");
     if (turnOn) this.play();
     else this.stop();
     this._render();
