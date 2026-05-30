@@ -176,6 +176,8 @@ SB.Single = {
       : `💥 Knocked Down<div class="sub">The AI took this one. Reset your guard and run it back.</div>`;
     this._addEndButtons();
     this.overlay.classList.add("show");
+    // Release the camera as soon as the round is over (Rematch restarts it).
+    if (this.pose) this.pose.stop();
     SB.Coach.say(won ? "win" : "lose", won ? "player won the round" : "player lost the round",
       (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.insertBefore(s, this.overlay.querySelector(".end-actions")); });
   },

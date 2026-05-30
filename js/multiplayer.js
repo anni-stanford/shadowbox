@@ -216,16 +216,12 @@ SB.MP = {
     this.iAmReady = false; this.foeReady = false; this.active = false;
     this._renderHP(); this._renderTime();
 
+    // Build pose/gesture handlers now, but DON'T turn the camera on yet —
+    // it only starts when the round actually begins (after both ready).
     this.pose = new SB.Pose(this.video, this.canvas);
     this.gestures = new SB.Gestures();
     this.gestures.onMove = (m) => this._onLocalMove(m);
-
-    this.coachEl.textContent = "Camera on. Get set…";
-    try {
-      await this.pose.start((kp) => this.gestures.feed(kp)); // camera on; moves do nothing until active
-    } catch (e) {
-      this.coachEl.textContent = "Camera access is required. Allow it and reopen.";
-    }
+    this.coachEl.textContent = "Get set…";
   },
 
   _showReady() {
@@ -233,7 +229,7 @@ SB.MP = {
     const title = document.createElement("div");
     title.textContent = "Ready?";
     const sub = document.createElement("div");
-    sub.className = "sub"; sub.textContent = "Square up to your camera. Match starts when you BOTH press ready.";
+    sub.className = "sub"; sub.textContent = "Match starts when you BOTH press ready. Your camera turns on at the bell.";
     const status = document.createElement("div");
     status.className = "sub"; status.id = "mp-ready-status";
     status.textContent = "You: not ready · Opponent: not ready";
@@ -279,7 +275,15 @@ SB.MP = {
     tick();
   },
 
-  _beginRound() {
+  async _beginRound() {
+    this.overlay.innerHTML = `<div style="font-size:40px">Starting camera…</div>`;
+    // Camera turns on only now, for the actual fight.
+    try {
+      await this.pose.start((kp) => this.gestures.feed(kp));
+    } catch (e) {
+      this.overlay.innerHTML = `Camera needed<div class="sub">Allow camera access to fight.</div>`;
+      return;
+    }
     this.overlay.classList.remove("show");
     this.overlay.innerHTML = "";
     this.active = true;
@@ -357,6 +361,7 @@ SB.MP = {
       : `💥 Defeated<div class="sub">Your opponent took this round.</div>`;
     this._menuButton();
     this.overlay.classList.add("show");
+    if (this.pose) this.pose.stop();   // release the camera when the match ends
     SB.Coach.say(won ? "win" : "lose", won ? "won the multiplayer match" : "lost the multiplayer match",
       (t) => { const s = document.createElement("div"); s.className = "sub"; s.textContent = t; this.overlay.insertBefore(s, this.overlay.querySelector(".end-actions")); });
   },
@@ -377,6 +382,7 @@ SB.MP = {
     this.overlay.innerHTML = `👋 Opponent left<div class="sub">They disconnected. Head back and start a new match.</div>`;
     this._menuButton();
     this.overlay.classList.add("show");
+    if (this.pose) this.pose.stop();
   },
 
   _send(obj) { try { if (this.conn && this.conn.open) this.conn.send(obj); } catch (e) {} },
