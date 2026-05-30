@@ -31,6 +31,13 @@
   // Background fight music + its toggle.
   if (SB.Music) SB.Music.init();
 
+  // Safety net: always release the camera if the page is closed or hidden.
+  window.addEventListener("pagehide", () => {
+    try { SB.Training.stop(); } catch (e) {}
+    try { SB.Single.stop(); } catch (e) {}
+    try { SB.MP.stop(); } catch (e) {}
+  });
+
   // ---------- API key gate ----------
   const keyInput = document.getElementById("apikey-input");
   const skip = document.getElementById("apikey-skip");
